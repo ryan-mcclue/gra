@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: zlib-acknowledgement
+
+*
+
+!code/
+!code/**/*.cpp
+!code/**/*.h
+
+!install-deps.bash
+
+!build.bash
+!.gitignore
+
+!fonts/
+!fonts/**/*.ttf
