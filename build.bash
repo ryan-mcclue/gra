@@ -5,4 +5,4 @@
 
 # libraries in /lib/x86_64-linux-gnu, /usr/lib
 # headers in /usr/include
-g++ -g code/gra.cpp -o build/gra -lSDL2 -lSDL2_ttf
+g++ -DDEV_BUILD -g code/gra.cpp -o build/gra -lSDL2 -lSDL2_ttf

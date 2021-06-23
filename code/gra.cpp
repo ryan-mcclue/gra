@@ -2,12 +2,22 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
+#include <cmath>
+// TODO(Ryan): Investigate whether C++ STL features used for embedded
+// e.g. std::vector.at() throws exception on out-of-bounds
+// exceptions bloat the stack
+#include <vector>
+#include <string>
+
 #define INTERNAL static
 #define GLOBAL static
 
 typedef unsigned int uint; 
 
 GLOBAL float secs_this_frame = 0.0f;
+GLOBAL uint render_width;
+GLOBAL uint render_height;
+GLOBAL SDL_Renderer *renderer;
 
 // NOTE(Ryan): Breakpoint macros
 #if defined(DEV_BUILD)
@@ -20,14 +30,14 @@ GLOBAL float secs_this_frame = 0.0f;
   INTERNAL inline void
   sbp(void)
   {
-    char *msg = SDL_GetError();
+    const char *msg = SDL_GetError();
     return;
   }
   #define SBP() sbp()
   INTERNAL inline void
   stbp(void)
   {
-    char *msg = TTF_GetError();
+    const char *msg = TTF_GetError();
     return;
   }
   #define STBP() stbp()
@@ -37,76 +47,246 @@ GLOBAL float secs_this_frame = 0.0f;
   #define STBP()
 #endif
 
+void
+draw_text(TTF_Font *font, std::string text, float x, float y, SDL_Color color)
+{
+  SDL_Surface *text_surface = \
+    TTF_RenderText_Solid(font, text.c_str(), color);
+  if (text_surface == NULL)
+  {
+    STBP();
+  }
+  
+  int text_width = 0;
+  int text_height = 0;
+  if (TTF_SizeText(font, text.c_str(), &text_width, &text_height) < 0)
+  {
+    STBP();
+  }
+
+  SDL_Texture *text_texture = \
+    SDL_CreateTextureFromSurface(renderer, text_surface);
+
+  int min_x = nearbyint(x);
+  int min_y = nearbyint(y);
+  SDL_Rect text_rect = {min_x, min_y, text_width, text_height};
+  SDL_RenderCopy(renderer, text_texture, NULL, &text_rect);
+
+  SDL_FreeSurface(text_surface);
+  SDL_DestroyTexture(text_texture);
+}
+
+void
+draw_rect(float x0, float y0, float x1, float y1, SDL_Color color)
+{
+  int min_x = nearbyint(x0);
+  int min_y = nearbyint(y0);
+  int max_x = nearbyint(x1);
+  int max_y = nearbyint(y1);
+
+  SDL_Rect rect = {min_x, min_y, max_x - min_x, max_y - min_y};
+
+  SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+  SDL_RenderFillRect(renderer, &rect);
+}
+
+struct
+TextInput
+{
+  std::string data;
+  bool entered;
+  bool escaped;
+
+  void
+  handle_event(SDL_Event *event)
+  {
+    // when a key is pressed, will get a 2 events
+    // 1 for a key is pressed
+    // 2 will convert that key to some number of characters based on
+    // locale mappings
+    if (event->type == SDL_TEXTINPUT)
+    {
+      printf("Got %s\n", event->text.text);
+    }
+  }
+};
+
 enum
-ConsoleState
+CONSOLE_STATE
 {
   CONSOLE_CLOSED,
-  CONSOLE_OPEN_SMALL,
-  CONSOLE_OPEN_BIG
+  CONSOLE_OPENED_SMALL,
+  CONSOLE_OPENED_BIG
 };
 
 struct
 Console
 {
-  TTF_Font *input_font = NULL;
-  TTF_Font *report_font = NULL;
+  TextInput *text_input;
 
-  float openness_max  = 0.7f; // fraction of screen space?
-  float open_t        = 0.0f; // how much is it open
-  float open_t_target = 0.0f; // how much it wants to be open
-  float open_dt       = 7.0f; // speed
+  TTF_Font *input_font = NULL;
+  int input_font_height;
+  SDL_Color input_bg_color;
+  SDL_Color input_text_color;
+
+  TTF_Font *output_font = NULL;
+  int output_font_height;
+  SDL_Color output_bg_color;
+  SDL_Color output_text_color;
+
+  // IMPORTANT(Ryan): Things that happen instantaneously can be
+  // disorientating for the user
+  float current_height = 0.0f;
+  float desired_height = 0.0f;
+  float open_speed = 1000.0f;
+
+  std::vector<std::string> history;
+
+  Console()
+  {
+    text_input = new TextInput();
+    output_font = TTF_OpenFont("fonts/Raleway-Regular.ttf", 32);
+    if (output_font == NULL)
+    {
+      STBP();
+    }
+    input_font = output_font;
+
+    output_font_height = TTF_FontHeight(output_font); 
+    input_font_height = TTF_FontHeight(input_font); 
+
+    // NOTE(Ryan): Colour selection gimp magic wand, hue+sat, colour picker
+    output_text_color = {20, 40, 60, 255};
+    output_bg_color = {0, 255, 0, 255};
+    input_bg_color = {0, 0, 255, 255};
+
+    history.push_back("hi there");
+    history.push_back("wandering about");
+    history.push_back("more text here");
+  }
 
   void
   draw(void)
   {
-    update_openness();
+    update_height();
 
-    // current dimensions of console
-    float x0, x1, y0, y1;
+    if (current_height > 0)
+    {
+      draw_rect(0, 0, render_width, current_height, output_bg_color);
+      float input_font_height = 40.0f; //TTF_FontHeight(input_font);
+      draw_rect(0, current_height, render_width, 
+                current_height + input_font_height, input_bg_color);
 
-    float input_font_height = TTF_FontHeight(input_font); 
-    float input_tab_space = input_font_height;   
+      float text_y0 = current_height - output_font_height;
+      int index = history.size() - 1;
+      while (text_y0 > 0)
+      {
+        if (index < 0)
+        {
+          break;
+        }
+
+        std::string cur_text = history[index]; 
+        draw_text(output_font, cur_text, 
+                  output_font_height * 0.5f, 
+                  text_y0, output_text_color);
+        text_y0 -= output_font_height;
+
+        index--;
+      }
+    }
+
+    float baseline_height = 0.0f;
   }
 
   void
-  open_or_close(ConsoleState extent)
+  update_height(void)
   {
-    if (extent == CONSOLE_CLOSED)
+    // IMPORTANT(Ryan): Even though it's cleaner to wrap in a clamp()
+    // function, at a later stage we may want to be aware that a
+    // transition state occurs, e.g. when finished closing, play a sound
+    // effect
+    float height_d = secs_this_frame * open_speed;
+    if (current_height < desired_height)
     {
-      open_t_target = 0.0f;
+      current_height += height_d;
+      if (current_height > desired_height)
+      {
+        current_height = desired_height;
+      }
     }
-    if (extent == CONSOLE_OPEN_SMALL)
+    if (current_height > desired_height)
     {
-      open_t_target = 1.0f;
+      current_height -= height_d;
+      if (current_height < 0)
+      {
+        current_height = 0;
+      }
     }
-    if (extent == CONSOLE_OPEN_BIG)
+  }
+
+  bool
+  is_open(void)
+  {
+    return (current_height > 0.0f);
+  }
+
+  void
+  handle_event(SDL_Event *event)
+  {
+    switch (event->type)
     {
-      open_t_target = 3.0f;
+      case SDL_KEYUP:
+      {
+        switch (event->key.keysym.sym)
+        {
+          case SDLK_BACKQUOTE:
+          {
+            if (is_open())
+            {
+              set_state(CONSOLE_CLOSED); 
+              break;
+            }
+            if (event->key.keysym.mod & KMOD_LSHIFT)
+            {
+              set_state(CONSOLE_OPENED_BIG);
+            }
+            else
+            {
+              set_state(CONSOLE_OPENED_SMALL);
+            }
+          } break;
+        }
+      } break;
+    }
+    if (is_open())
+    {
+      text_input->handle_event(event); 
     }
   }
 
   void
-  update_openness(void)
+  set_state(CONSOLE_STATE state)
   {
-    float dopen = secs_this_frame * open_dt;
-    if (open_t < open_t_target)
+    switch (state)
     {
-      open_t += dopen;
-      if (open_t > open_t_target)
+      case CONSOLE_CLOSED:
       {
-        open_t = open_t_target;
-      }
-    }
-    if (open_t > open_t_target)
-    {
-      open_t -= dopen;
-      if (open_t < 0)
+        desired_height = 0.0f * render_height;
+      } break;
+      case CONSOLE_OPENED_SMALL:
       {
-        open_t = 0;
-      }
+        desired_height = 0.3f * render_height;
+      } break;
+      case CONSOLE_OPENED_BIG:
+      {
+        desired_height = 0.7f * render_height;
+      } break;
     }
   }
+
 };
+
 
 int
 main(int argc, char *argv[])
@@ -116,8 +296,15 @@ main(int argc, char *argv[])
     SBP();
   }
 
+  if (TTF_Init() < 0)
+  {
+    STBP();
+  }
+
   int window_width = 1280;
   int window_height = 720;
+  render_width = window_width;
+  render_height = window_height;
   SDL_Window *window = SDL_CreateWindow("GRA", SDL_WINDOWPOS_CENTERED, 
                                         SDL_WINDOWPOS_CENTERED,
                                         window_width, window_height, 0);
@@ -126,46 +313,39 @@ main(int argc, char *argv[])
     SBP();
   }
 
-  SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
+  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
   if (renderer == NULL)
   {
     SBP();
   }
 
-  TTF_Font *font = TTF_OpenFont("fonts/Raleway-Regular.ttf", 24);
-  if (font == NULL)
-  {
-    STBP();
-  }
-
-  //SDL_Color white = {255, 255, 255};
-  //SDL_Surface *text = TTF_RenderText_Solid(font, "my text", white);
-  //SDL_Texture *text_texture = \
-  //  SDL_CreateTextureFromSurface(renderer, text);
-  //SDL_RenderCopy(renderer, text_texture, NULL, &rect);
-
-  //u8 *SDL_GetKeyboardState(NULL);
+  Console *console = new Console();
 
   uint prev_ms = SDL_GetTicks();
 
   bool want_to_run = true;
+  SDL_StartTextInput();
   while (want_to_run)
   {
     SDL_Event event = {};
     while (SDL_PollEvent(&event))
     {
-      switch (event.type)
+      if (event.type == SDL_QUIT)
       {
-        case SDL_QUIT:
-        {
-          want_to_run = false;
-        } break;
+        want_to_run = false;
+        break;
+      }
+      console->handle_event(&event);
+      if (console->is_open())
+      {
+        break;
       }
     }
 
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
 
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    console->draw();
 
     SDL_RenderPresent(renderer);
 
