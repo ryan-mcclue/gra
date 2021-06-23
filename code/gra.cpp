@@ -2,12 +2,14 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
+#include <iostream>
 #include <cmath>
 // TODO(Ryan): Investigate whether C++ STL features used for embedded
 // e.g. std::vector.at() throws exception on out-of-bounds
 // exceptions bloat the stack
 #include <vector>
 #include <string>
+#include <cassert>
 
 #define INTERNAL static
 #define GLOBAL static
@@ -47,9 +49,23 @@ GLOBAL SDL_Renderer *renderer;
   #define STBP()
 #endif
 
+int
+get_text_width(TTF_Font *font, std::string text)
+{
+  int text_width = 0;
+  int text_height = 0;
+  if (TTF_SizeText(font, text.c_str(), &text_width, &text_height) < 0)
+  {
+    STBP();
+  }
+  return text_width;
+}
+
+// Offset font to background to make stand out
 void
 draw_text(TTF_Font *font, std::string text, float x, float y, SDL_Color color)
 {
+  // TTF_RenderUTF8_Blended(); TTF_SizeUTF8()
   SDL_Surface *text_surface = \
     TTF_RenderText_Solid(font, text.c_str(), color);
   if (text_surface == NULL)
@@ -90,12 +106,17 @@ draw_rect(float x0, float y0, float x1, float y1, SDL_Color color)
   SDL_RenderFillRect(renderer, &rect);
 }
 
+#define INPUT_BUFFER_MAX_SIZE 8000
 struct
 TextInput
 {
-  std::string data;
+  std::string text;
   bool entered;
   bool escaped;
+  bool activate;
+
+  char input_buffer[INPUT_BUFFER_MAX_SIZE];
+  int input_buffer_count;
 
   void
   handle_event(SDL_Event *event)
@@ -106,8 +127,38 @@ TextInput
     // locale mappings
     if (event->type == SDL_TEXTINPUT)
     {
+      char key = event->text.text[0];
+      assert(key < 128);
+      if (input_buffer_count < INPUT_BUFFER_MAX_SIZE)
+      {
+        input_buffer[input_buffer_count++] = key;
+      }
+
       printf("Got %s\n", event->text.text);
     }
+  }
+
+  void
+  draw(TTF_Font *font, float x, float y, SDL_Color color)
+  {
+    std::string text(input_buffer);
+    draw_text(font, text, x, y, color);
+
+    // may need to alter position based on font descender/ascender info
+    int text_width = get_text_width(font, text);
+    float cursor_x = x + text_width;
+    // better to make width based on width of "M" character
+    float cursor_width = TTF_FontHeight(font) * 0.5f;
+    float cursor_height = TTF_FontHeight(font);
+
+    // start_time = last_keypress_time; (this is so it does not flash when pressing key)
+    // cos_val = cos((time - start_time)*/ val). division slows, multiplication increases
+    // cos_val *= cos_val (could sqrt(). this is to make curve more dynamic) 
+    // color = lerp_color(flash_color, start_color, cos_val);
+    Uint8 cursor_alpha = fabs(255.0f * cos(SDL_GetTicks() / 200));
+    SDL_Color cursor_color = {255, 255, 255, cursor_alpha};
+    draw_rect(cursor_x, y, cursor_x + cursor_width, y + cursor_height,
+              cursor_color);
   }
 };
 
@@ -152,6 +203,7 @@ Console
     }
     input_font = output_font;
 
+    // pad = font_height * pad_val;
     output_font_height = TTF_FontHeight(output_font); 
     input_font_height = TTF_FontHeight(input_font); 
 
@@ -194,9 +246,9 @@ Console
 
         index--;
       }
+      // float baseline_height = 0.0f;
+      text_input->draw(input_font, 0, current_height, input_text_color); 
     }
-
-    float baseline_height = 0.0f;
   }
 
   void
@@ -315,6 +367,10 @@ main(int argc, char *argv[])
 
   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
   if (renderer == NULL)
+  {
+    SBP();
+  }
+  if (SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND) < 0)
   {
     SBP();
   }
