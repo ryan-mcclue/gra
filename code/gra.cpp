@@ -106,17 +106,14 @@ draw_rect(float x0, float y0, float x1, float y1, SDL_Color color)
   SDL_RenderFillRect(renderer, &rect);
 }
 
-#define INPUT_BUFFER_MAX_SIZE 8000
 struct
 TextInput
 {
-  std::string text;
   bool entered;
   bool escaped;
   bool activate;
 
-  char input_buffer[INPUT_BUFFER_MAX_SIZE];
-  int input_buffer_count;
+  std::vector<char> input_buffer;
 
   void
   handle_event(SDL_Event *event)
@@ -129,19 +126,25 @@ TextInput
     {
       char key = event->text.text[0];
       assert(key < 128);
-      if (input_buffer_count < INPUT_BUFFER_MAX_SIZE)
+      input_buffer.push_back(key);
+    }
+    if (event->type == SDL_KEYUP)
+    {
+      if (event->key.keysym.sym == SDLK_RETURN)
       {
-        input_buffer[input_buffer_count++] = key;
+        entered = true;
       }
-
-      printf("Got %s\n", event->text.text);
+      if (event->key.keysym.sym == SDLK_BACKSPACE)
+      {
+        escaped = true;
+      }
     }
   }
 
   void
   draw(TTF_Font *font, float x, float y, SDL_Color color)
   {
-    std::string text(input_buffer);
+    std::string text(input_buffer.data(), input_buffer.size());
     draw_text(font, text, x, y, color);
 
     // may need to alter position based on font descender/ascender info
@@ -314,6 +317,19 @@ Console
     if (is_open())
     {
       text_input->handle_event(event); 
+      if (text_input->entered)
+      {
+        std::string hist_string(text_input->input_buffer.data(), 
+                                text_input->input_buffer.size());
+        history.push_back(hist_string);
+        text_input->entered = false;
+        text_input->input_buffer.clear();
+      }
+      if (text_input->escaped)
+      {
+        text_input->input_buffer.pop_back();
+        text_input->escaped = false;
+      }
     }
   }
 
