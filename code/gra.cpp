@@ -2,12 +2,16 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
+// 2:56:00
+
 #include <iostream>
 #include <cmath>
 // TODO(Ryan): Investigate whether C++ STL features used for embedded
 // e.g. std::vector.at() throws exception on out-of-bounds
 // exceptions bloat the stack
 #include <vector>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <cassert>
 
@@ -49,6 +53,56 @@ GLOBAL SDL_Renderer *renderer;
   #define STBP()
 #endif
 
+// TODO(Ryan): Investigate references?
+std::vector<std::string> 
+read_entire_file_as_lines(std::string file_name)
+{
+  std::vector<std::string> lines;
+  std::fstream file(file_name);
+  if (file.is_open())
+  {
+    std::string line;
+    while (std::getline(file, line))
+    {
+      lines.push_back(line);
+    }
+  }
+  return lines;
+}
+
+void
+init_variables(void)
+{
+  std::vector<std::string> file_lines = \
+    read_entire_file_as_lines("All.variables");  
+
+  int line_number = 1;
+  for (std::string &line: file_lines)
+  {
+    if (line.empty()) continue;
+   
+    int space_counter = 0;
+    for (char c: line)
+    {
+      if (c != ' ') break;
+      space_counter++;
+    }
+    line.erase(0, space_counter);
+
+    if (line[0] == ':')
+    {
+      std::cout << "line number: " << line_number
+                << "FOLDER: " << line << std::endl;
+    }
+    else
+    {
+      std::cout << "line number: " << line_number
+                << "VALUE: " << line << std::endl;
+    }
+    line_number++;
+  }
+}
+
 int
 get_text_width(TTF_Font *font, std::string text)
 {
@@ -65,6 +119,10 @@ get_text_width(TTF_Font *font, std::string text)
 void
 draw_text(TTF_Font *font, std::string text, float x, float y, SDL_Color color)
 {
+  if (text.empty())
+  {
+    return;
+  }
   // TTF_RenderUTF8_Blended(); TTF_SizeUTF8()
   SDL_Surface *text_surface = \
     TTF_RenderText_Solid(font, text.c_str(), color);
@@ -368,6 +426,8 @@ main(int argc, char *argv[])
   {
     STBP();
   }
+
+  init_variables();
 
   int window_width = 1280;
   int window_height = 720;
