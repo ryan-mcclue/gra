@@ -14,6 +14,7 @@
 #include <iterator>
 #include <string>
 #include <cassert>
+#include <map>
 
 #define INTERNAL static
 #define GLOBAL static
@@ -70,9 +71,38 @@ read_entire_file_as_lines(std::string file_name)
   return lines;
 }
 
+union
+Variable
+{
+  int i_val; 
+  float f_val; 
+};
+
+struct
+VariableContainer
+{
+  std::string name;
+  std::map<std::string, Variable> variables;
+
+  add_value(std::string name, Variable value)
+  {
+
+  }
+};
+
+std::vector<VariableContainer> variable_containers;
+
+VariableContainer player = VariableContainer("Player");
+player.add_value("x", 10);
+player.add_value("fast", false);
+
+// could just store in one giant struct
+
 void
 init_variables(void)
 {
+  add_value_holder(player_hotload); 
+
   std::vector<std::string> file_lines = \
     read_entire_file_as_lines("All.variables");  
 
@@ -134,6 +164,14 @@ init_variables(void)
       {
         const char *name = substr(line, 0, (rhs - line));
         rhs = consume_spaces(rhs);
+        if (current_holder == null)
+        {
+          // error 
+        }
+        else
+        {
+          // set value in holder
+        }
       }
     }
     line_number++;
