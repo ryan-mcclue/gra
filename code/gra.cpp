@@ -77,7 +77,7 @@ init_variables(void)
     read_entire_file_as_lines("All.variables");  
 
   int line_number = 1;
-  for (std::string &line: file_lines)
+  for (std::string line: file_lines)
   {
     if (line.empty()) continue;
    
@@ -88,16 +88,53 @@ init_variables(void)
       space_counter++;
     }
     line.erase(0, space_counter);
+    if (line.empty()) continue;
 
-    if (line[0] == ':')
+    // Parsing choose which is more encompassing: 
+    // identifier character or length
+    const char *line_at = line.c_str();
+    if (line_at[0] == ':')
     {
-      std::cout << "line number: " << line_number
-                << "FOLDER: " << line << std::endl;
+      if (line.length() < 2) {
+        printf("Error at line: %d. Line starting with ':' must have '/' and a name after it.\n", line_number);
+      }
+      else
+      {
+        if (line_at[1] != '/')
+        {
+          printf("Error at line: %d. Expected a '/' after ':'\n", line_number);
+        }
+        else
+        {
+          line_at += 2;
+          printf("Folder name: %s\n", line_at);
+          // advance pointer
+        }
+      }
+    }
+    else if (line_at[0] == '#')
+    {
+      printf("Comment: %s\n", line_at);
     }
     else
     {
-      std::cout << "line number: " << line_number
-                << "VALUE: " << line << std::endl;
+      const char *rhs = line_at;
+      while (true)
+      {
+        if (rhs[0] == '\0') break;
+        if (rhs[0] == ' ') break;
+        rhs++;
+      }
+
+      if (rhs[0] == '\0')
+      {
+        printf("Error at line number %d! Expected a space after variable name\n", line_number);
+      }
+      else
+      {
+        const char *name = substr(line, 0, (rhs - line));
+        rhs = consume_spaces(rhs);
+      }
     }
     line_number++;
   }
