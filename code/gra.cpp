@@ -2,7 +2,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
-// 2:56:00
+// 2:56:00 drop-down-console
 
 #include <iostream>
 #include <cmath>
@@ -55,6 +55,7 @@ GLOBAL SDL_Renderer *renderer;
 #endif
 
 // TODO(Ryan): Investigate references?
+// TODO(Ryan): Iterators seem pervasive
 std::vector<std::string> 
 read_entire_file_as_lines(std::string file_name)
 {
@@ -74,6 +75,7 @@ read_entire_file_as_lines(std::string file_name)
 union
 Variable
 {
+  // doesn't handle overflow
   int i_val; 
   float f_val; 
 };
@@ -81,7 +83,6 @@ Variable
 struct
 VariableContainer
 {
-  std::string name;
   std::map<std::string, Variable> variables;
 
   add_value(std::string name, Variable value)
@@ -90,11 +91,13 @@ VariableContainer
   }
 };
 
-std::vector<VariableContainer> variable_containers;
+map<string, map<string, Variable>> variable_containers;
 
 VariableContainer player = VariableContainer("Player");
-player.add_value("x", 10);
-player.add_value("fast", false);
+player.add_value("i_x", 10);
+player.add_value("b_fast", false);
+
+variable_containers["Player"]["fast"]
 
 // could just store in one giant struct
 
@@ -138,7 +141,8 @@ init_variables(void)
         {
           line_at += 2;
           printf("Folder name: %s\n", line_at);
-          // advance pointer
+          if (cant_find_variable) print_error();
+          current_variable = variable;
         }
       }
     }
@@ -164,13 +168,18 @@ init_variables(void)
       {
         const char *name = substr(line, 0, (rhs - line));
         rhs = consume_spaces(rhs);
-        if (current_holder == null)
+        if (current_holder == nullptr)
         {
           // error 
         }
         else
         {
           // set value in holder
+          if (value_name_not_in_current_holder) error;
+          poke_value(current_holder, value_name, value);
+          int --> atoi(str);
+          float --> atof(str);
+          bool --> if at[0] == 'T/t/F/f'
         }
       }
     }
