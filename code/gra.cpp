@@ -78,28 +78,21 @@ Variable
   // doesn't handle overflow
   int i_val; 
   float f_val; 
+  bool b_val;
+  string s_val;
 };
 
-struct
-VariableContainer
-{
-  std::map<std::string, Variable> variables;
+typedef map<string, Variable> VariableContainer;
+typedef pair<string, Variable> VariableContainerItem;
+VariableContainer player;
+player.insert(VariableContainerItem("i_x", 10));
 
-  add_value(std::string name, Variable value)
-  {
-
-  }
-};
-
-map<string, map<string, Variable>> variable_containers;
-
-VariableContainer player = VariableContainer("Player");
-player.add_value("i_x", 10);
-player.add_value("b_fast", false);
+typedef map<string, VariableContainer> HotloadableVariables;
+typedef pair<string, VariableContainer> HotloadableVariablesItem;
+HotloadableVariables hotloadable_variables;
+hotloadable_variables.insert(HotloadableVariablesItem("Player", player);
 
 variable_containers["Player"]["fast"]
-
-// could just store in one giant struct
 
 void
 init_variables(void)
@@ -180,6 +173,8 @@ init_variables(void)
           int --> atoi(str);
           float --> atof(str);
           bool --> if at[0] == 'T/t/F/f'
+          str --> if at[0] != '"' error;
+          pos = find_until_quote() else error;
         }
       }
     }
@@ -511,7 +506,10 @@ main(int argc, char *argv[])
     STBP();
   }
 
-  init_variables();
+  if (file_has_changed())
+  {
+    init_variables("All.variables"); // rename to reload_variables();
+  }
 
   int window_width = 1280;
   int window_height = 720;
